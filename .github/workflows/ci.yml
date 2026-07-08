@@ -1,0 +1,151 @@
+# .github/workflows/ci.yml
+#
+# Continuous Integration workflow for RAG Troubleshooting Assistant.
+# Runs automatically on every push and pull request to master branch.
+#
+# What it does:
+#   1. Sets up Python environment
+#   2. Installs dependencies
+#   3. Checks code syntax
+#   4. Builds the vector index using sample documents
+#   5. Starts the server
+#   6. Hits /health to confirm server started correctly
+#   7. Reports pass or fail
+
+name: CI
+
+# ── Triggers ──────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [ master ]          # runs when you push to master
+  pull_request:
+    branches: [ master ]          # runs when someone opens a pull request
+  workflow_dispatch:            # allows manual trigger from GitHub UI
+
+# ── Jobs ──────────────────────────────────────────────────────────────────────
+# A job is a group of steps that run on the same machine.
+# Steps inside a job run sequentially.
+# Multiple jobs can run in parallel.
+
+jobs:
+  test:
+    name: Build and Health Check
+    runs-on: ubuntu-latest      # GitHub provides a free Ubuntu machine
+
+    # Environment variables available to all steps in this job.
+    # Secrets are stored in GitHub repo settings — never in code.
+    env:
+      GROQ_API_KEY:      ${{ secrets.GROQ_API_KEY }}
+      GROQ_MODEL:        llama-3.1-8b-instant
+      SOURCE_TYPE:       documents
+      DOCUMENTS_DIR:     data/documents
+      VECTOR_STORE_PATH: vector_store
+      LOG_PATH:          logs/requests.jsonl
+      EMBEDDING_MODEL:   all-MiniLM-L6-v2
+      TOP_K:             5
+      CHUNK_SIZE:        512
+      CHUNK_OVERLAP:     64
+      MAX_TOKENS:        1024
+      HOST:              0.0.0.0
+      PORT:              8000
+
+    steps:
+
+      # ── Step 1: Get the code ───────────────────────────────────────────────
+      # Checks out your repository onto the GitHub runner machine.
+      # Without this step, the machine has no files to work with.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Step 2: Set up Python ─────────────────────────────────────────────
+      # Installs the specified Python version on the runner machine.
+      # We use 3.11 to match your local environment.
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"          # caches pip downloads between runs = faster
+
+      # ── Step 3: Install dependencies ──────────────────────────────────────
+      # Upgrade pip first, then install from requirements.txt.
+      # faiss-cpu and sentence-transformers are the heavy ones (~500MB).
+      # The pip cache above means this only downloads once, then reuses.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ── Step 4: Syntax check ──────────────────────────────────────────────
+      # py_compile checks every Python file for syntax errors.
+      # This catches broken imports, typos in keywords, unclosed brackets.
+      # Does NOT run the code — just validates it can be parsed.
+      - name: Check Python syntax
+        run: |
+          python -m py_compile backend/config.py
+          python -m py_compile backend/ingest.py
+          python -m py_compile backend/retriever.py
+          python -m py_compile backend/query_parser.py
+          python -m py_compile backend/context_builder.py
+          python -m py_compile backend/llm.py
+          python -m py_compile backend/response_builder.py
+          python -m py_compile backend/logger.py
+          python -m py_compile backend/main.py
+          echo "All files passed syntax check"
+
+      # ── Step 5: Create required directories ───────────────────────────────
+      # The runner starts with a clean clone of your repo.
+      # vector_store/ and logs/ are in .gitignore so they do not exist yet.
+      # ingest.py and the server need these folders to exist.
+      - name: Create runtime directories
+        run: |
+          mkdir -p vector_store
+          mkdir -p logs
+
+      # ── Step 6: Build the vector index ────────────────────────────────────
+      # Runs ingest.py against the sample documents in data/documents/.
+      # This builds vector_store/index.faiss and vector_store/chunks.pkl.
+      # If ingest fails, the server cannot start — so this step catches
+      # ingestion errors before we even try to start the server.
+      - name: Build vector index
+        run: python backend/ingest.py
+
+      # ── Step 7: Start the server in background ────────────────────────────
+      # & at the end runs the command in the background.
+      # Without & it would block and the workflow would hang forever.
+      # We then wait 10 seconds to give the server time to fully start
+      # before we try to hit the health endpoint.
+      - name: Start server
+        run: |
+          uvicorn backend.main:app --host 0.0.0.0 --port 8000 &
+          sleep 10
+
+      # ── Step 8: Health check ──────────────────────────────────────────────
+      # curl sends a GET request to /health.
+      # --fail tells curl to exit with an error code if HTTP status >= 400.
+      # --silent suppresses progress output.
+      # --show-error shows error messages even with --silent.
+      # If the server is not running or returns an error, this step fails
+      # and the whole workflow is marked as failed.
+      - name: Health check
+        run: |
+          curl --fail --silent --show-error http://localhost:8000/health
+
+      # ── Step 9: Confirm index is loaded ───────────────────────────────────
+      # Parse the /health response and confirm index_loaded is true.
+      # Uses Python to parse the JSON — more reliable than grep.
+      # If index_loaded is false, raises SystemExit(1) which fails the step.
+      - name: Confirm index loaded
+        run: |
+          python - <<'EOF'
+          import urllib.request, json, sys
+          response = urllib.request.urlopen("http://localhost:8000/health")
+          data = json.loads(response.read())
+          print(f"Health response: {data}")
+          if not data.get("index_loaded"):
+              print("FAIL: index_loaded is False")
+              sys.exit(1)
+          if data.get("chunks", 0) == 0:
+              print("FAIL: no chunks in index")
+              sys.exit(1)
+          print(f"PASS: index loaded with {data['chunks']} chunks")
+          EOF
