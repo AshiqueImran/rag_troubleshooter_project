@@ -1,10 +1,10 @@
-![CI](https://github.com/AshiqueImran/rag_troubleshooter_project/actions/workflows/ci.yml/badge.svg)
-
 # RAG Troubleshooting Assistant
+
+![CI](https://github.com/AshiqueImran/rag_troubleshooter_project/actions/workflows/ci.yml/badge.svg)
 
 An intelligent troubleshooting assistant built on **Retrieval-Augmented Generation (RAG)**.
 
-Hybrid retrieval (FAISS semantic search + BM25 keyword search) feeds relevant context to GPT-4o via function calling, returning structured answers with confidence scores.
+Hybrid retrieval (FAISS semantic search + BM25 keyword search) feeds relevant context to Groq (Llama 3.1) via function calling, returning structured answers with confidence scores.
 
 ---
 
@@ -15,7 +15,7 @@ User Query
   → Query Parser        (intent + keyword extraction)
   → Hybrid Retriever    (FAISS + BM25 → RRF merge)
   → Context Builder     (deduplicate + trim)
-  → LLM (GPT-4o)        (function calling → structured JSON)
+  → LLM (Groq Llama 3.1) (function calling → structured JSON)
   → Response Builder    (consistent API response)
   → Logger              (append-only JSONL metrics)
 ```
@@ -37,8 +37,8 @@ The system supports three pluggable sources — set `SOURCE_TYPE` in `.env`:
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/yourusername/rag-troubleshooter
-cd rag-troubleshooter
+git clone https://github.com/AshiqueImran/rag_troubleshooter_project
+cd rag_troubleshooter_project
 pip install -r requirements.txt
 ```
 
@@ -46,7 +46,7 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env — set OPENAI_API_KEY and SOURCE_TYPE at minimum
+# Edit .env — set GROQ_API_KEY and SOURCE_TYPE at minimum
 ```
 
 ### 3. Add knowledge
@@ -105,7 +105,7 @@ Triggers re-ingestion. Requires `X-Admin-Key` header.
 
 ```bash
 curl -X POST http://localhost:8000/ingest \
-  -H "X-Admin-Key: your-openai-key" \
+  -H "X-Admin-Key: your-groq-api-key" \
   -H "Content-Type: application/json" \
   -d '{"source_type": "documents"}'
 ```
@@ -115,14 +115,14 @@ curl -X POST http://localhost:8000/ingest \
 ## Project Structure
 
 ```
-rag-troubleshooter/
+rag_troubleshooter_project/
 ├── backend/
 │   ├── main.py             # FastAPI app + routes
 │   ├── ingest.py           # Document loader + chunker + embedder
 │   ├── retriever.py        # Hybrid FAISS + BM25 search
 │   ├── query_parser.py     # Intent + keyword extraction
 │   ├── context_builder.py  # Chunk dedup + context assembly
-│   ├── llm.py              # OpenAI GPT-4o function calling
+│   ├── llm.py              # Groq Llama 3.1 function calling
 │   ├── response_builder.py # Structured JSON response
 │   ├── logger.py           # Request/response logging
 │   └── config.py           # ENV-driven configuration
@@ -135,6 +135,9 @@ rag-troubleshooter/
 │   └── style.css
 ├── logs/
 │   └── requests.jsonl      # Auto-created at runtime
+├── .github/
+│   └── workflows/
+│       └── ci.yml          # GitHub Actions CI pipeline
 ├── requirements.txt
 ├── .env.example
 └── README.md
@@ -144,9 +147,13 @@ rag-troubleshooter/
 
 ## CI/CD
 
-The `/health` endpoint is designed for integration with GitHub Actions, Docker health checks, and load balancer probes.
+GitHub Actions runs automatically on every push to `master`:
 
-Example GitHub Actions health check step:
+- Syntax check all Python files
+- Build vector index from sample documents
+- Start the FastAPI server
+- Hit `/health` and confirm index is loaded
+
 ```yaml
 - name: Health check
   run: curl --fail http://localhost:8000/health
@@ -160,7 +167,7 @@ Example GitHub Actions health check step:
 - **FAISS** — vector similarity search (Meta)
 - **sentence-transformers** — local text embeddings (all-MiniLM-L6-v2)
 - **rank-bm25** — BM25 keyword search
-- **OpenAI GPT-4o** — LLM with function calling
+- **Groq (Llama 3.1)** — LLM with function calling (OpenAI SDK compatible)
 - **SQLAlchemy** — database source connector
 - **BeautifulSoup4** — web scraping source connector
 
