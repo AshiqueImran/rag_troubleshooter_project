@@ -1,0 +1,42 @@
+HARDWARE TROUBLESHOOTING GUIDE
+==============================
+
+ISSUE: Computer won't turn on
+Symptoms: Press power button, nothing happens. No lights, no fan spin.
+Cause: Power supply failure, loose cable, or dead battery (laptops).
+Resolution:
+  1. Check power cable is firmly connected to outlet and machine
+  2. For laptops: remove battery, hold power button 30 seconds, reinsert battery
+  3. Try different power outlet
+  4. If desktop: check PSU switch on back is set to ON (I not O)
+  5. If still no response, PSU may need replacement
+
+ISSUE: Computer overheating and shutting down
+Symptoms: Machine runs hot, fan loud, shuts down during heavy tasks.
+Cause: Dust blocking vents, thermal paste dried out, or fan failure.
+Resolution:
+  1. Use compressed air to clean vents and fan blades
+  2. Ensure machine is on hard flat surface, not carpet or bed
+  3. Check CPU temperature with HWMonitor — should be below 85C under load
+  4. If temperature above 90C, thermal paste reapplication needed
+  5. Replace fan if it is not spinning at full speed
+
+ISSUE: Monitor displaying no signal
+Symptoms: Monitor shows "No Signal" or blank screen after PC starts.
+Cause: Loose cable, wrong input source, or GPU failure.
+Resolution:
+  1. Check display cable (HDMI/DisplayPort) is firmly connected at both ends
+  2. Press Input button on monitor to select correct source
+  3. Try a different cable
+  4. Test monitor with another device to confirm monitor itself works
+  5. Reseat GPU in PCIe slot if using dedicated graphics card
+
+ISSUE: Keyboard keys not responding
+Symptoms: Some or all keys do not register when pressed.
+Cause: Driver issue, debris under keys, or hardware fault.
+Resolution:
+  1. Unplug and replug keyboard
+  2. Try keyboard on different USB port
+  3. Test in BIOS — if keys work in BIOS, issue is software side
+  4. Uninstall keyboard driver and let Windows reinstall automatically
+  5. Clean under keys with compressed air

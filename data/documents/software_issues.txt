@@ -1,0 +1,41 @@
+SOFTWARE TROUBLESHOOTING GUIDE
+==============================
+
+ISSUE: Application crashes on startup
+Symptoms: App opens briefly then closes. Sometimes shows error code.
+Cause: Corrupted install, missing dependency, or incompatible version.
+Resolution:
+  1. Restart computer and try again — temporary memory issue may be cause
+  2. Run application as Administrator (right-click > Run as Administrator)
+  3. Check Windows Event Viewer for error details: eventvwr.msc
+  4. Uninstall and reinstall application cleanly
+  5. Install latest Visual C++ Redistributable from Microsoft website
+
+ISSUE: Windows Update stuck or failing
+Symptoms: Update downloads but fails to install. Error code 0x80070005 or 0x8007000d.
+Cause: Corrupted update cache or Windows Update service issue.
+Resolution:
+  1. Run Windows Update Troubleshooter: Settings > Update > Troubleshoot
+  2. Clear update cache: stop wuauserv service, delete C:\Windows\SoftwareDistribution, restart service
+  3. Run: sfc /scannow in Command Prompt as Administrator
+  4. Run: DISM /Online /Cleanup-Image /RestoreHealth
+
+ISSUE: Computer running slowly
+Symptoms: Programs take long to open, system feels sluggish.
+Cause: Too many startup programs, low disk space, or malware.
+Resolution:
+  1. Check disk space — ensure at least 15% free on C: drive
+  2. Open Task Manager and end high-CPU or high-memory processes
+  3. Disable startup programs: Task Manager > Startup tab
+  4. Run Windows Defender full scan to check for malware
+  5. If HDD not SSD, consider upgrading storage
+
+ISSUE: Blue Screen of Death (BSOD)
+Symptoms: Screen turns blue with error message and system restarts.
+Cause: Driver conflict, RAM fault, or corrupted system files.
+Resolution:
+  1. Note the error code shown (e.g. IRQL_NOT_LESS_OR_EQUAL)
+  2. Boot into Safe Mode and check if issue persists
+  3. Run memory diagnostic: mdsched.exe
+  4. Update or rollback recently installed drivers
+  5. Run: sfc /scannow to repair corrupted system files

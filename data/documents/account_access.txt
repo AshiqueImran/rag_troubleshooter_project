@@ -1,0 +1,38 @@
+ACCOUNT AND ACCESS TROUBLESHOOTING GUIDE
+========================================
+
+ISSUE: Cannot log in — password not accepted
+Symptoms: Correct password entered but login fails. Account may be locked.
+Cause: Caps Lock on, expired password, or account lockout after failed attempts.
+Resolution:
+  1. Check Caps Lock is off
+  2. Try password reset via Forgot Password link
+  3. Contact IT helpdesk if account is locked — accounts lock after 5 failed attempts
+  4. Check if password has expired — company policy requires reset every 90 days
+
+ISSUE: Two-factor authentication code not working
+Symptoms: Correct 2FA code entered but system rejects it.
+Cause: Time sync issue on authenticator app or expired code.
+Resolution:
+  1. Ensure authenticator app time is synced: Google Authenticator > Settings > Time Correction
+  2. Use code immediately after it appears — codes expire after 30 seconds
+  3. If using SMS, check phone signal is strong enough to receive message
+  4. Request backup codes from IT admin if authenticator device is lost
+
+ISSUE: No permission to access shared folder
+Symptoms: Attempting to open shared drive shows Access Denied error.
+Cause: User not added to correct security group or folder permissions changed.
+Resolution:
+  1. Confirm correct folder path with team lead
+  2. Submit access request ticket to IT helpdesk with folder path and business reason
+  3. IT admin will add user to appropriate Active Directory security group
+  4. Access typically granted within 1 business day
+
+ISSUE: Email not sending — stuck in outbox
+Symptoms: Emails remain in Outbox and are not delivered.
+Cause: Authentication failure, large attachment, or mail server issue.
+Resolution:
+  1. Check internet connection is active
+  2. Remove attachments larger than 25MB and use file sharing link instead
+  3. Re-enter email account password: File > Account Settings > Repair
+  4. Check mail server status with IT if multiple users affected

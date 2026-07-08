@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Troubleshooting Assistant</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🛠 Troubleshooting Assistant</h1>
+      <p class="subtitle">Describe your issue and I'll find a solution.</p>
+    </header>
+
+    <div class="chat-window" id="chatWindow">
+      <div class="message bot">
+        <div class="bubble">Hi! Describe your issue and I'll look it up for you.</div>
+      </div>
+    </div>
+
+    <div class="input-row">
+      <input
+        type="text"
+        id="queryInput"
+        placeholder="e.g. my wifi keeps dropping..."
+        autocomplete="off"
+      />
+      <button id="sendBtn">Send</button>
+    </div>
+
+    <div class="status-bar" id="statusBar"></div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

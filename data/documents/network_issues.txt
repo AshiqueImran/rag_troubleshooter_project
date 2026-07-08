@@ -1,0 +1,39 @@
+NETWORK TROUBLESHOOTING GUIDE
+=============================
+
+ISSUE: WiFi keeps disconnecting
+Symptoms: Device loses wifi connection intermittently. Connection drops every few minutes.
+Cause: Channel interference, outdated firmware, or weak signal strength.
+Resolution:
+  1. Log into router admin panel at 192.168.1.1
+  2. Change wireless channel from Auto to channel 6 or channel 11
+  3. Update router firmware: Settings > Router > Firmware Update
+  4. Move device closer to router if signal strength is below 50%
+  5. Restart router by unplugging for 30 seconds
+
+ISSUE: Cannot connect to internet despite WiFi connected
+Symptoms: WiFi shows connected but browser says no internet.
+Cause: DNS failure or IP address conflict.
+Resolution:
+  1. Open Command Prompt and run: ipconfig /flushdns
+  2. Run: netsh int ip reset
+  3. Change DNS to Google DNS: 8.8.8.8 and 8.8.4.4
+  4. Restart network adapter: Device Manager > Network Adapters > Disable > Enable
+
+ISSUE: Slow internet speed
+Symptoms: Pages load slowly, video buffering frequently.
+Cause: Bandwidth congestion, interference, or ISP throttling.
+Resolution:
+  1. Run speed test at fast.com to confirm actual speed
+  2. Disconnect unused devices from the network
+  3. Switch from 2.4GHz band to 5GHz band in WiFi settings
+  4. Contact ISP if speed is below 50% of subscribed plan
+
+ISSUE: VPN connection failing
+Symptoms: VPN client shows error "Authentication failed" or times out.
+Cause: Incorrect credentials, server down, or firewall blocking VPN port.
+Resolution:
+  1. Verify username and password are correct
+  2. Try a different VPN server location
+  3. Ensure port 1194 (OpenVPN) or 443 (SSL VPN) is not blocked by firewall
+  4. Reinstall VPN client if issue persists
