@@ -1,3 +1,5 @@
+![CI](https://github.com/AshiqueImran/rag_troubleshooter_project/actions/workflows/ci.yml/badge.svg)
+
 # RAG Troubleshooting Assistant
 
 An intelligent troubleshooting assistant built on **Retrieval-Augmented Generation (RAG)**.
