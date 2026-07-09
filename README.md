@@ -12,23 +12,52 @@ Hybrid retrieval (FAISS semantic search + BM25 keyword search) feeds relevant co
 
 ```
 User Query
-  → Query Parser        (intent + keyword extraction)
-  → Hybrid Retriever    (FAISS + BM25 → RRF merge)
-  → Context Builder     (deduplicate + trim)
+  → Query Parser          (intent + keyword extraction)
+  → Hybrid Retriever      (FAISS + BM25 → RRF merge)
+  → Context Builder       (deduplicate + trim)
   → LLM (Groq Llama 3.1) (function calling → structured JSON)
-  → Response Builder    (consistent API response)
-  → Logger              (append-only JSONL metrics)
+  → Response Builder      (consistent API response)
+  → Logger                (append-only JSONL metrics)
 ```
+
+---
 
 ## Knowledge Sources
 
-The system supports three pluggable sources — set `SOURCE_TYPE` in `.env`:
+Set `SOURCE_TYPE` in `.env` — the ingestion layer handles the rest:
 
 | Source | Config | Use case |
 |--------|--------|----------|
 | `documents` | Drop files in `data/documents/` | PDF, TXT, MD manuals |
 | `database` | Set `DB_URL` + `DB_QUERY` | SQL knowledge base |
 | `web` | Set `WEB_URLS` | Scraped documentation pages |
+
+---
+
+## Chunking Methods
+
+Set `CHUNKING_METHOD` in `.env` to control how documents are split before indexing:
+
+| Method | Config | Best for |
+|--------|--------|----------|
+| `fixed` | `CHUNK_SIZE` + `CHUNK_OVERLAP` | Default. Works for any document type |
+| `paragraph` | — | Structured manuals, FAQs, troubleshooting guides |
+| `semantic` | `SEMANTIC_THRESHOLD` | Most accurate. Splits on topic boundaries |
+
+**Whenever you change `CHUNKING_METHOD`, re-run ingest to rebuild the index:**
+
+```bash
+python backend/ingest.py
+```
+
+Then restart the server, or trigger a live reload via the admin endpoint:
+
+```bash
+curl -X POST http://localhost:8000/ingest \
+  -H "X-Admin-Key: your-groq-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"source_type": "documents"}'
+```
 
 ---
 
@@ -46,7 +75,7 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env — set GROQ_API_KEY and SOURCE_TYPE at minimum
+# Edit .env — set GROQ_API_KEY, SOURCE_TYPE, and CHUNKING_METHOD at minimum
 ```
 
 ### 3. Add knowledge
@@ -62,6 +91,8 @@ python backend/ingest.py
 ```
 
 This creates `vector_store/index.faiss` and `vector_store/chunks.pkl`.
+
+Re-run whenever you change documents or switch chunking method.
 
 ### 5. Run the server
 
@@ -101,7 +132,8 @@ Response:
 
 ### `POST /ingest` *(admin)*
 
-Triggers re-ingestion. Requires `X-Admin-Key` header.
+Triggers re-ingestion and reloads the index without restarting the server.
+Requires `X-Admin-Key` header.
 
 ```bash
 curl -X POST http://localhost:8000/ingest \
@@ -118,7 +150,7 @@ curl -X POST http://localhost:8000/ingest \
 rag_troubleshooter_project/
 ├── backend/
 │   ├── main.py             # FastAPI app + routes
-│   ├── ingest.py           # Document loader + chunker + embedder
+│   ├── ingest.py           # Loader + chunker (fixed/paragraph/semantic) + embedder
 │   ├── retriever.py        # Hybrid FAISS + BM25 search
 │   ├── query_parser.py     # Intent + keyword extraction
 │   ├── context_builder.py  # Chunk dedup + context assembly
@@ -168,6 +200,7 @@ GitHub Actions runs automatically on every push to `master`:
 - **sentence-transformers** — local text embeddings (all-MiniLM-L6-v2)
 - **rank-bm25** — BM25 keyword search
 - **Groq (Llama 3.1)** — LLM with function calling (OpenAI SDK compatible)
+- **nltk + scikit-learn** — sentence tokenisation and cosine similarity for semantic chunking
 - **SQLAlchemy** — database source connector
 - **BeautifulSoup4** — web scraping source connector
 

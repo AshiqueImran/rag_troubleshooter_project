@@ -2,6 +2,11 @@
 ingest.py
 Loads knowledge from configured source, chunks, embeds, and saves FAISS index.
 Run once before starting server: python backend/ingest.py
+
+Chunking methods (set CHUNKING_METHOD in .env):
+  fixed     → split every N words with overlap (default)
+  paragraph → split on blank lines, preserves natural sections
+  semantic  → split on topic boundaries using embedding similarity
 """
 
 import os, pickle, logging, sys
@@ -15,6 +20,8 @@ import config
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
 
+
+# ── Source loaders ────────────────────────────────────────────────────────────
 
 def _load_documents() -> list[str]:
     from pypdf import PdfReader
@@ -74,7 +81,14 @@ def _load_web() -> list[str]:
     return texts
 
 
-def _chunk(texts: list[str], size: int, overlap: int) -> list[str]:
+# ── Chunking methods ──────────────────────────────────────────────────────────
+
+def _chunk_fixed(texts: list[str], size: int, overlap: int) -> list[str]:
+    """
+    Split every N words with overlap between chunks.
+    Simple and fast. Works for any document type.
+    Best when document structure is unknown or inconsistent.
+    """
     chunks = []
     for text in texts:
         words = text.split()
@@ -84,6 +98,116 @@ def _chunk(texts: list[str], size: int, overlap: int) -> list[str]:
             start += size - overlap
     return chunks
 
+
+def _chunk_paragraph(texts: list[str]) -> list[str]:
+    """
+    Split on blank lines (double newlines).
+    Each paragraph becomes one chunk.
+    Preserves natural document sections — great for structured manuals,
+    FAQs, and troubleshooting guides where each block is a complete idea.
+
+    Very short paragraphs (under 10 words) are merged with the next one
+    to avoid creating nearly-empty chunks from headings or labels.
+    """
+    chunks = []
+    for text in texts:
+        # split on one or more blank lines
+        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+        merged = []
+        buffer = ""
+        for para in paragraphs:
+            if len(buffer.split()) < 10:
+                # buffer too short — merge with next paragraph
+                buffer = (buffer + " " + para).strip()
+            else:
+                if buffer:
+                    merged.append(buffer)
+                buffer = para
+        if buffer:
+            merged.append(buffer)
+        chunks.extend(merged)
+    log.info(f"Paragraph chunking: {len(chunks)} chunks")
+    return chunks
+
+
+def _chunk_semantic(texts: list[str], model: SentenceTransformer, threshold: float) -> list[str]:
+    """
+    Split on topic boundaries detected by embedding similarity.
+    Embeds every sentence, measures cosine similarity between consecutive
+    sentences, and splits where similarity drops below the threshold.
+
+    This keeps semantically related content together regardless of
+    paragraph breaks or word count — the most accurate chunking method.
+
+    threshold: float between 0 and 1. Lower = fewer, larger chunks.
+                                       Higher = more, smaller chunks.
+                0.5 is a good default for most documents.
+    """
+    try:
+        import nltk
+        nltk.download("punkt", quiet=True)
+        nltk.download("punkt_tab", quiet=True)
+        from nltk.tokenize import sent_tokenize
+    except ImportError:
+        log.warning("nltk not installed. Falling back to fixed chunking.")
+        return _chunk_fixed(texts, config.CHUNK_SIZE, config.CHUNK_OVERLAP)
+
+    from sklearn.metrics.pairwise import cosine_similarity
+
+    chunks = []
+
+    for text in texts:
+        sentences = sent_tokenize(text)
+        if len(sentences) <= 1:
+            chunks.append(text)
+            continue
+
+        # embed all sentences at once — faster than one by one
+        vectors = model.encode(sentences, convert_to_numpy=True)
+
+        current_chunk = [sentences[0]]
+
+        for i in range(1, len(sentences)):
+            sim = cosine_similarity([vectors[i - 1]], [vectors[i]])[0][0]
+
+            if sim < threshold:
+                # topic boundary detected — save current chunk, start new one
+                chunks.append(" ".join(current_chunk))
+                current_chunk = [sentences[i]]
+            else:
+                # same topic — keep adding to current chunk
+                current_chunk.append(sentences[i])
+
+        # save the last chunk
+        if current_chunk:
+            chunks.append(" ".join(current_chunk))
+
+    log.info(f"Semantic chunking: {len(chunks)} chunks (threshold={threshold})")
+    return chunks
+
+
+def _chunk(texts: list[str], model: SentenceTransformer) -> list[str]:
+    """
+    Router — picks chunking method from CHUNKING_METHOD in .env.
+    All methods return list[str]. Everything downstream is identical.
+    """
+    method = config.CHUNKING_METHOD
+    log.info(f"Chunking method: {method}")
+
+    if method == "paragraph":
+        return _chunk_paragraph(texts)
+
+    elif method == "semantic":
+        return _chunk_semantic(texts, model, threshold=config.SEMANTIC_THRESHOLD)
+
+    else:
+        # default: fixed
+        if method != "fixed":
+            log.warning(f"Unknown CHUNKING_METHOD '{method}' — using fixed.")
+        return _chunk_fixed(texts, config.CHUNK_SIZE, config.CHUNK_OVERLAP)
+
+
+# ── Embed + index ─────────────────────────────────────────────────────────────
 
 def _embed_and_index(chunks: list[str], model: SentenceTransformer) -> faiss.IndexFlatL2:
     log.info(f"Embedding {len(chunks)} chunks...")
@@ -102,6 +226,8 @@ def _save(index, chunks):
     log.info(f"Saved {len(chunks)} chunks to {config.VECTOR_STORE_PATH}/")
 
 
+# ── Entry point ───────────────────────────────────────────────────────────────
+
 def build_index():
     log.info(f"Source: {config.SOURCE_TYPE}")
     loaders = {"documents": _load_documents, "database": _load_database, "web": _load_web}
@@ -112,10 +238,14 @@ def build_index():
     if not raw:
         log.warning("No content loaded.")
         return
-    chunks = _chunk(raw, config.CHUNK_SIZE, config.CHUNK_OVERLAP)
+
+    # load model once — reused for both semantic chunking and embedding
+    model = SentenceTransformer(config.EMBEDDING_MODEL)
+
+    chunks = _chunk(raw, model)
     log.info(f"{len(chunks)} chunks from {len(raw)} source blocks.")
-    model  = SentenceTransformer(config.EMBEDDING_MODEL)
-    index  = _embed_and_index(chunks, model)
+
+    index = _embed_and_index(chunks, model)
     _save(index, chunks)
     log.info("Ingestion complete.")
 
