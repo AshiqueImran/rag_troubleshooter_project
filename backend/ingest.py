@@ -1,15 +1,22 @@
 """
 ingest.py
 Loads knowledge from configured source, chunks, embeds, and saves FAISS index.
-Run once before starting server: python backend/ingest.py
 
-Chunking methods (set CHUNKING_METHOD in .env):
-  fixed     → split every N words with overlap (default)
-  paragraph → split on blank lines, preserves natural sections
-  semantic  → split on topic boundaries using embedding similarity
+Run: python backend/ingest.py
+
+Which methods get built is controlled by CHUNKING_METHODS in .env.
+Which method the server uses is controlled by CHUNKING_METHOD in .env.
+
+Each method saves to its own subfolder:
+    vector_store/fixed/
+    vector_store/paragraph/
+    vector_store/semantic/
+
+Switch methods by changing CHUNKING_METHOD in .env and restarting the server.
+Only re-run ingest when documents change.
 """
 
-import os, pickle, logging, sys
+import os, sys, pickle, logging
 import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
@@ -83,128 +90,77 @@ def _load_web() -> list[str]:
 
 # ── Chunking methods ──────────────────────────────────────────────────────────
 
-def _chunk_fixed(texts: list[str], size: int, overlap: int) -> list[str]:
-    """
-    Split every N words with overlap between chunks.
-    Simple and fast. Works for any document type.
-    Best when document structure is unknown or inconsistent.
-    """
+def _chunk_fixed(texts: list[str]) -> list[str]:
     chunks = []
     for text in texts:
         words = text.split()
         start = 0
         while start < len(words):
-            chunks.append(" ".join(words[start:start + size]))
-            start += size - overlap
+            chunks.append(" ".join(words[start:start + config.CHUNK_SIZE]))
+            start += config.CHUNK_SIZE - config.CHUNK_OVERLAP
+    log.info(f"Fixed chunking: {len(chunks)} chunks")
     return chunks
 
 
 def _chunk_paragraph(texts: list[str]) -> list[str]:
-    """
-    Split on blank lines (double newlines).
-    Each paragraph becomes one chunk.
-    Preserves natural document sections — great for structured manuals,
-    FAQs, and troubleshooting guides where each block is a complete idea.
-
-    Very short paragraphs (under 10 words) are merged with the next one
-    to avoid creating nearly-empty chunks from headings or labels.
-    """
     chunks = []
     for text in texts:
-        # split on one or more blank lines
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-        merged = []
         buffer = ""
         for para in paragraphs:
             if len(buffer.split()) < 10:
-                # buffer too short — merge with next paragraph
                 buffer = (buffer + " " + para).strip()
             else:
                 if buffer:
-                    merged.append(buffer)
+                    chunks.append(buffer)
                 buffer = para
         if buffer:
-            merged.append(buffer)
-        chunks.extend(merged)
+            chunks.append(buffer)
     log.info(f"Paragraph chunking: {len(chunks)} chunks")
     return chunks
 
 
-def _chunk_semantic(texts: list[str], model: SentenceTransformer, threshold: float) -> list[str]:
-    """
-    Split on topic boundaries detected by embedding similarity.
-    Embeds every sentence, measures cosine similarity between consecutive
-    sentences, and splits where similarity drops below the threshold.
-
-    This keeps semantically related content together regardless of
-    paragraph breaks or word count — the most accurate chunking method.
-
-    threshold: float between 0 and 1. Lower = fewer, larger chunks.
-                                       Higher = more, smaller chunks.
-                0.5 is a good default for most documents.
-    """
+def _chunk_semantic(texts: list[str], model: SentenceTransformer) -> list[str]:
     try:
         import nltk
         nltk.download("punkt", quiet=True)
         nltk.download("punkt_tab", quiet=True)
         from nltk.tokenize import sent_tokenize
     except ImportError:
-        log.warning("nltk not installed. Falling back to fixed chunking.")
-        return _chunk_fixed(texts, config.CHUNK_SIZE, config.CHUNK_OVERLAP)
+        log.warning("nltk not installed — falling back to fixed chunking.")
+        return _chunk_fixed(texts)
 
     from sklearn.metrics.pairwise import cosine_similarity
-
     chunks = []
-
     for text in texts:
         sentences = sent_tokenize(text)
         if len(sentences) <= 1:
             chunks.append(text)
             continue
-
-        # embed all sentences at once — faster than one by one
-        vectors = model.encode(sentences, convert_to_numpy=True)
-
+        vectors       = model.encode(sentences, convert_to_numpy=True)
         current_chunk = [sentences[0]]
-
         for i in range(1, len(sentences)):
             sim = cosine_similarity([vectors[i - 1]], [vectors[i]])[0][0]
-
-            if sim < threshold:
-                # topic boundary detected — save current chunk, start new one
+            if sim < config.SEMANTIC_THRESHOLD:
                 chunks.append(" ".join(current_chunk))
                 current_chunk = [sentences[i]]
             else:
-                # same topic — keep adding to current chunk
                 current_chunk.append(sentences[i])
-
-        # save the last chunk
         if current_chunk:
             chunks.append(" ".join(current_chunk))
-
-    log.info(f"Semantic chunking: {len(chunks)} chunks (threshold={threshold})")
+    log.info(f"Semantic chunking: {len(chunks)} chunks (threshold={config.SEMANTIC_THRESHOLD})")
     return chunks
 
 
-def _chunk(texts: list[str], model: SentenceTransformer) -> list[str]:
-    """
-    Router — picks chunking method from CHUNKING_METHOD in .env.
-    All methods return list[str]. Everything downstream is identical.
-    """
-    method = config.CHUNKING_METHOD
-    log.info(f"Chunking method: {method}")
-
+def _chunk(texts: list[str], method: str, model: SentenceTransformer) -> list[str]:
     if method == "paragraph":
         return _chunk_paragraph(texts)
-
     elif method == "semantic":
-        return _chunk_semantic(texts, model, threshold=config.SEMANTIC_THRESHOLD)
-
+        return _chunk_semantic(texts, model)
     else:
-        # default: fixed
         if method != "fixed":
-            log.warning(f"Unknown CHUNKING_METHOD '{method}' — using fixed.")
-        return _chunk_fixed(texts, config.CHUNK_SIZE, config.CHUNK_OVERLAP)
+            log.warning(f"Unknown method '{method}' — using fixed.")
+        return _chunk_fixed(texts)
 
 
 # ── Embed + index ─────────────────────────────────────────────────────────────
@@ -218,37 +174,50 @@ def _embed_and_index(chunks: list[str], model: SentenceTransformer) -> faiss.Ind
     return index
 
 
-def _save(index, chunks):
-    os.makedirs(config.VECTOR_STORE_PATH, exist_ok=True)
-    faiss.write_index(index, os.path.join(config.VECTOR_STORE_PATH, "index.faiss"))
-    with open(os.path.join(config.VECTOR_STORE_PATH, "chunks.pkl"), "wb") as f:
+def _save(index, chunks, path: str):
+    os.makedirs(path, exist_ok=True)
+    faiss.write_index(index, os.path.join(path, "index.faiss"))
+    with open(os.path.join(path, "chunks.pkl"), "wb") as f:
         pickle.dump(chunks, f)
-    log.info(f"Saved {len(chunks)} chunks to {config.VECTOR_STORE_PATH}/")
+    log.info(f"Saved {len(chunks)} chunks → {path}/")
+
+
+# ── Core pipeline ─────────────────────────────────────────────────────────────
+
+def build_index(raw: list[str], model: SentenceTransformer, method: str):
+    """Build and save index for one method. Raw text and model passed in to
+    avoid reloading documents and model for every method in a multi-build."""
+    log.info(f"--- Building: method={method} ---")
+    chunks = _chunk(raw, method, model)
+    index  = _embed_and_index(chunks, model)
+    _save(index, chunks, config.get_vector_store_path(method))
+    log.info(f"Done: {method} → {config.get_vector_store_path(method)}/")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
-def build_index():
+if __name__ == "__main__":
     log.info(f"Source: {config.SOURCE_TYPE}")
+    log.info(f"Methods to build: {config.CHUNKING_METHODS}")
+
+    # Load documents once — reused for all methods
     loaders = {"documents": _load_documents, "database": _load_database, "web": _load_web}
     loader  = loaders.get(config.SOURCE_TYPE)
     if not loader:
         raise ValueError(f"Unknown SOURCE_TYPE: '{config.SOURCE_TYPE}'")
+
     raw = loader()
     if not raw:
         log.warning("No content loaded.")
-        return
+        sys.exit(1)
 
-    # load model once — reused for both semantic chunking and embedding
+    # Load embedding model once — reused for all methods
     model = SentenceTransformer(config.EMBEDDING_MODEL)
 
-    chunks = _chunk(raw, model)
-    log.info(f"{len(chunks)} chunks from {len(raw)} source blocks.")
+    # Build an index for each method listed in CHUNKING_METHODS
+    for method in config.CHUNKING_METHODS:
+        build_index(raw, model, method)
 
-    index = _embed_and_index(chunks, model)
-    _save(index, chunks)
     log.info("Ingestion complete.")
-
-
-if __name__ == "__main__":
-    build_index()
+    log.info(f"Active method (CHUNKING_METHOD): {config.CHUNKING_METHOD}")
+    log.info(f"Server will load from: {config.get_vector_store_path()}")
