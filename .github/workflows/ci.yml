@@ -17,10 +17,20 @@ name: CI
 # ── Triggers ──────────────────────────────────────────────────────────────────
 on:
   push:
-    branches: [ master ]          # runs when you push to master
+    branches: [ master ]
+    paths-ignore:
+      - 'README.md'
+      - '**.md'        # ignores all markdown files
+      - '.gitignore'
+      - 'docs/**'
   pull_request:
-    branches: [ master ]          # runs when someone opens a pull request
-  workflow_dispatch:            # allows manual trigger from GitHub UI
+    branches: [ master ]
+    paths-ignore:
+      - 'README.md'
+      - '**.md'
+      - '.gitignore'
+      - 'docs/**'
+  workflow_dispatch:          # allows manual trigger from GitHub UI
 
 # ── Jobs ──────────────────────────────────────────────────────────────────────
 # A job is a group of steps that run on the same machine.
