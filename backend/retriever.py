@@ -19,7 +19,7 @@ def load_index():
     index_path  = os.path.join(config.VECTOR_STORE_PATH, "index.faiss")
     chunks_path = os.path.join(config.VECTOR_STORE_PATH, "chunks.pkl")
     if not os.path.exists(index_path) or not os.path.exists(chunks_path):
-        raise FileNotFoundError("Vector store not found. Run `python backend/ingest.py` first.")
+        raise FileNotFoundError("Vector store not found. Run `python backend/ingest.py` or  `python backend/ingest.py --all` first.")
     index = faiss.read_index(index_path)
     with open(chunks_path, "rb") as f:
         chunks = pickle.load(f)

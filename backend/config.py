@@ -32,8 +32,18 @@ DB_QUERY: str        = os.getenv("DB_QUERY", "")
 WEB_URLS: list[str]  = [u.strip() for u in os.getenv("WEB_URLS", "").split(",") if u.strip()]
 
 # ── Storage ───────────────────────────────────────────────────────────────────
-VECTOR_STORE_PATH: str = os.getenv("VECTOR_STORE_PATH", "vector_store")
-LOG_PATH: str          = os.getenv("LOG_PATH", "logs/requests.jsonl")
+# 1. non dynamic
+# VECTOR_STORE_PATH: str = os.getenv("VECTOR_STORE_PATH", "vector_store")
+
+# 2. derive the vector store path dynamically
+# result: vector_store/fixed, vector_store/paragraph, vector_store/semantic
+VECTOR_STORE_PATH = os.path.join(
+    os.getenv("VECTOR_STORE_PATH", "vector_store"),
+    os.getenv("CHUNKING_METHOD", "fixed")
+)
+
+
+LOG_PATH: str = os.getenv("LOG_PATH", "logs/requests.jsonl")
 
 # ── Server ────────────────────────────────────────────────────────────────────
 HOST: str = os.getenv("HOST", "0.0.0.0")
