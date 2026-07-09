@@ -36,22 +36,44 @@ Set `SOURCE_TYPE` in `.env` — the ingestion layer handles the rest:
 
 ## Chunking Methods
 
-Set `CHUNKING_METHOD` in `.env` to control how documents are split before indexing:
+Two `.env` variables control chunking:
 
-| Method | Config | Best for |
-|--------|--------|----------|
-| `fixed` | `CHUNK_SIZE` + `CHUNK_OVERLAP` | Default. Works for any document type |
-| `paragraph` | — | Structured manuals, FAQs, troubleshooting guides |
-| `semantic` | `SEMANTIC_THRESHOLD` | Most accurate. Splits on topic boundaries |
+| Variable | Purpose |
+|----------|---------|
+| `CHUNKING_METHODS` | Comma-separated list of methods ingest builds indexes for |
+| `CHUNKING_METHOD` | Single method the server loads at runtime |
 
-**Whenever you change `CHUNKING_METHOD`, re-run ingest to rebuild the index:**
+| Method | Best for |
+|--------|----------|
+| `fixed` | Default. Works for any document type. Splits every N words with overlap |
+| `paragraph` | Structured manuals, FAQs, troubleshooting guides. Splits on blank lines |
+| `semantic` | Most accurate. Splits on topic boundaries using embedding similarity |
 
+Each method gets its own subfolder in `vector_store/`:
+
+```
+vector_store/
+├── fixed/
+├── paragraph/
+└── semantic/
+```
+
+**Build all indexes at once:**
 ```bash
+# .env: CHUNKING_METHODS=fixed,paragraph,semantic
 python backend/ingest.py
 ```
 
-Then restart the server, or trigger a live reload via the admin endpoint:
+**Switch active method instantly — no rebuild needed:**
+```bash
+# .env: change CHUNKING_METHOD=paragraph
+# restart server — loads vector_store/paragraph/ automatically
+uvicorn backend.main:app --reload
+```
 
+**Only re-run ingest when documents change.**
+
+You can also trigger a live reload without restarting via the admin endpoint:
 ```bash
 curl -X POST http://localhost:8000/ingest \
   -H "X-Admin-Key: your-groq-api-key" \
@@ -75,7 +97,7 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env — set GROQ_API_KEY, SOURCE_TYPE, and CHUNKING_METHOD at minimum
+# Edit .env — set GROQ_API_KEY, SOURCE_TYPE, CHUNKING_METHOD, CHUNKING_METHODS
 ```
 
 ### 3. Add knowledge
@@ -90,9 +112,8 @@ Sample documents are included in `data/documents/` for testing.
 python backend/ingest.py
 ```
 
-This creates `vector_store/index.faiss` and `vector_store/chunks.pkl`.
-
-Re-run whenever you change documents or switch chunking method.
+Builds a FAISS index for each method listed in `CHUNKING_METHODS`.
+Re-run only when documents change.
 
 ### 5. Run the server
 
@@ -161,6 +182,9 @@ rag_troubleshooter_project/
 ├── data/
 │   └── documents/          # Drop knowledge files here
 ├── vector_store/           # Auto-created by ingest.py
+│   ├── fixed/              # Index built with fixed chunking
+│   ├── paragraph/          # Index built with paragraph chunking
+│   └── semantic/           # Index built with semantic chunking
 ├── frontend/
 │   ├── index.html
 │   ├── app.js
